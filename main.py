@@ -1,11 +1,15 @@
 from enum import Enum
+from dataclasses import dataclass
+import typing
 import random
 
 import flask
 import jsons
 
-#from PySpice.Spice.Netlist import Circuit
+import PySpice.Probe.WaveForm
+from PySpice.Spice.Netlist import Circuit
 
+EPS = 1e-6
 
 class BlockOr(Enum):
     V = 'v'
@@ -17,6 +21,24 @@ class BlockOr(Enum):
         else:
             return BlockOr.V
 
+@dataclass()
+class CircuitState:
+    cir: Circuit
+    last_name: int
+    nodes: dict[tuple[int, int], str]
+
+    def new_name(self):
+        self.last_name += 1
+        return str(self.last_name)
+
+    def connect(self, u: tuple[int, int], v: tuple[int, int], r: float):
+        if u not in self.nodes.keys():
+            self.nodes[u] = self.new_name()
+        if v not in self.nodes.keys():
+            self.nodes[v] = self.new_name()
+        
+        if r >= 0.0:
+            self.cir.R(f"r_{self.new_name()}", self.nodes[u], self.nodes[v], r)
 
 class Block:
     _WS = 10000000
@@ -38,20 +60,18 @@ class Block:
         self.freeUp = False
         self.freeDown = False
 
-        self.leftR = 0.0
-        self.rightR = 0.0
-        self.upR = 0.0
-        self.downR = 0.0
+        self.leftR = -1.0
+        self.rightR = -1.0
+        self.upR = -1.0
+        self.downR = -1.0
 
         self.startV = 0.0
 
-        self._lastnode = 0
-        self._nodes = {}
-        #self._circuit = Circuit('Test')
+        self._cs = CircuitState(Circuit('Test'), 0, {})
+        self._answer = None
 
     def populate(self, prng, temp=_BASE_TEMP):
-        while prng.random() < self.complexity * self._NEXT_DIV_P * temp / (len(self.children) + 1) and len(
-                self.children) < self._MAX_CHILDREN:
+        while prng.random() < self.complexity * self._NEXT_DIV_P * temp / (len(self.children) + 1) and len(self.children) < self._MAX_CHILDREN:
             newB = Block(self.orient.other(), self.complexity)
             newB2 = Block(self.orient.other(), self.complexity)
             newB.populate(prng, temp * self._TEMP_MUL)
@@ -66,31 +86,31 @@ class Block:
             self.downR = -1.0
             if self.orient == BlockOr.V:
                 for i in range(len(self.children) - 1):
-                    if len(self.children[i + 1].children) < len(self.children[i].children):
+                    if len(self.children[i+1].children) < len(self.children[i].children):
                         self.children[i].freeRight = True
                     else:
-                        self.children[i + 1].freeLeft = True
+                        self.children[i+1].freeLeft = True
                 self.children[0].freeLeft = self.freeLeft
                 self.children[-1].freeRight = self.freeRight
 
                 for child in self.children:
                     child.freeUp = self.freeUp
                     child.freeDown = self.freeDown
-
+                    
                     child.placeResistors(prng, temp * self._TEMP_MUL)
             else:
                 for i in range(len(self.children) - 1):
-                    if len(self.children[i + 1].children) < len(self.children[i].children):
+                    if len(self.children[i+1].children) < len(self.children[i].children):
                         self.children[i].freeDown = True
                     else:
-                        self.children[i + 1].freeUp = True
+                        self.children[i+1].freeUp = True
                 self.children[0].freeUp = self.freeUp
                 self.children[-1].freeDown = self.freeDown
 
                 for child in self.children:
                     child.freeLeft = self.freeLeft
                     child.freeRight = self.freeRight
-
+                    
                     child.placeResistors(prng, temp * self._TEMP_MUL)
         else:
             if self.freeLeft and prng.random() * temp < self._R_PROB:
@@ -101,40 +121,31 @@ class Block:
                 self.upR = 1.0
             if self.freeDown and prng.random() * temp < self._R_PROB:
                 self.downR = 1.0
-
+    
     @staticmethod
     def default(prng: random.Random, complexity: float, orient: BlockOr = BlockOr.V):
         new = Block(orient, complexity)
         new.populate(prng)
+        if len(new.children) > 0:
+            new.children[0] = Block(orient.other(), complexity)
         new.freeDown = True
         new.freeUp = True
-        new.freeLeft = True
+        new.freeLeft = False
         new.freeRight = True
         new.placeResistors(prng)
+        new.startV = 1.0
         return new
 
-    def _new_name(self):
-        self._lastnode += 1
-        return self._lastnode
 
-    def _connect(self, u, v, r):
-        if u not in self._nodes.keys():
-            self._nodes[u] = self._new_name()
-        if v not in self._nodes.keys():
-            self._nodes[v] = self._new_name()
-
-        if r >= 0.0:
-            self._circuit.R(f"r_{self._new_name()}", self._nodes[u], self._nodes[v], r)
-
-    """def to_circuit(self, off_x, off_y, s_x, s_y):
+    def to_circuit(self, off_x, off_y, s_x, s_y):
         if self.upR >= 0.0:
-            self._connect((off_x, off_y), (off_x + self._WIRE, off_y), self.upR)
+            self._cs.connect((off_x, off_y), (off_x + s_x, off_y), self.upR)
         if self.downR >= 0.0:
-            self._connect((off_x, off_y + self._WIRE), (off_x + self._WIRE, off_y + self._WIRE), self.downR)
+            self._cs.connect((off_x, off_y + s_y), (off_x + s_x, off_y + s_y), self.downR)
         if self.leftR >= 0.0:
-            self._connect((off_x, off_y), (off_x, off_y + self._WIRE), self.leftR)
+            self._cs.connect((off_x, off_y), (off_x, off_y + s_y), self.leftR)
         if self.rightR >= 0.0:
-            self._connect((off_x + self._WIRE, off_y), (off_x + self._WIRE, off_y + self._WIRE), self.rightR)
+            self._cs.connect((off_x + s_x, off_y), (off_x + s_x, off_y + s_y), self.rightR)
 
         if len(self.children) == 0:
             return
@@ -143,31 +154,27 @@ class Block:
         ch = s_y / len(self.children)
 
         for i in range(len(self.children)):
+            self.children[i]._cs = self._cs
             if self.orient == BlockOr.H:
                 self.children[i].to_circuit(off_x, off_y + ch * i, s_x, ch)
             else:
                 self.children[i].to_circuit(off_x + cw * i, off_y, cw, s_y)
-    """
-
-    """def answer(self):
-        n1 = self._nodes[(0, self._WS)] = self._new_name()
-        n2 = self._nodes[(self._WS, 0)] = self._new_name()
+    def solve(self):
+        self._cs.nodes[(0, 0)] = 'inp'
+        self._cs.nodes[(0, self._WS)] = self._cs.cir.gnd
+        self._cs.cir.V('input', 'inp', self._cs.cir.gnd, 1.0)
+        self.children[0].startV = 1.0
         self.to_circuit(0, 0, self._WS, self._WS)
-        self._circuit.V('input', n1, n2, 10)
-        print(self._circuit)
-        sim = self._circuit.simulator()
-        sim.
-        dcv = sim.dc(Vinput=slice(10, 10, 0))
-        cur = dcv['input']
-        return cur
-    """
-
-
+        print(self._cs.cir)
+        sim = self._cs.cir.simulator(temperature=25, nominal_temperature=25)
+        op = typing.cast(PySpice.Probe.WaveForm.OperatingPoint, sim.operating_point())
+        self._answer = 1 / abs(op['Vinput'][0])
+        print(self._answer)
+        return self._answer 
 
 app = flask.Flask(__name__)
 
 db: dict[str, Block] = {}
-
 
 def answer(dct, status: int):
     result = flask.jsonify(dct)
@@ -181,12 +188,8 @@ def create(id: str) -> flask.Response:
         return answer({"error": "Circuit already present"}, 409)
     prng = random.Random()
     db[id] = Block.default(prng, flask.request.args.get('complexity', default=0.5, type=float))
-    try:
-        print(db[id].answer())
-    except:
-        pass
+    db[id].solve()
     return answer({'error': None}, 200)
-
 
 @app.route('/block/<id>', methods=['GET'])
 def get(id: str):
