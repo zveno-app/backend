@@ -181,6 +181,18 @@ def answer(dct, status: int):
     result.status = status
     return result
 
+@app.route('/block/<id>/check', methods=['GET'])
+def check(id: str):
+    user_ans = flask.request.args.get('answer', default=None, type=float)
+    if user_ans is None:
+        return answer({'error': 'Answer not provided'}, 400)
+    if id not in db.keys():
+        return answer({'error': 'Circuit not found'}, 404)
+    ent = db[id]
+    if ent._answer is None:
+        ent._answer = 0.0
+        ent.solve()
+    return answer({'error': None, 'result': abs(ent._answer - user_ans) < EPS}, 200)
 
 @app.route('/block/<id>', methods=['POST'])
 def create(id: str) -> flask.Response:
