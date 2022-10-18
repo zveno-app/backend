@@ -4,7 +4,7 @@ import random
 import flask
 import jsons
 
-from PySpice.Spice.Netlist import Circuit
+#from PySpice.Spice.Netlist import Circuit
 
 
 class BlockOr(Enum):
@@ -47,7 +47,7 @@ class Block:
 
         self._lastnode = 0
         self._nodes = {}
-        self._circuit = Circuit('Test')
+        #self._circuit = Circuit('Test')
 
     def populate(self, prng, temp=_BASE_TEMP):
         while prng.random() < self.complexity * self._NEXT_DIV_P * temp / (len(self.children) + 1) and len(
@@ -126,7 +126,7 @@ class Block:
         if r >= 0.0:
             self._circuit.R(f"r_{self._new_name()}", self._nodes[u], self._nodes[v], r)
 
-    def to_circuit(self, off_x, off_y, s_x, s_y):
+    """def to_circuit(self, off_x, off_y, s_x, s_y):
         if self.upR >= 0.0:
             self._connect((off_x, off_y), (off_x + self._WIRE, off_y), self.upR)
         if self.downR >= 0.0:
@@ -147,8 +147,9 @@ class Block:
                 self.children[i].to_circuit(off_x, off_y + ch * i, s_x, ch)
             else:
                 self.children[i].to_circuit(off_x + cw * i, off_y, cw, s_y)
+    """
 
-    def answer(self):
+    """def answer(self):
         n1 = self._nodes[(0, self._WS)] = self._new_name()
         n2 = self._nodes[(self._WS, 0)] = self._new_name()
         self.to_circuit(0, 0, self._WS, self._WS)
@@ -159,6 +160,8 @@ class Block:
         dcv = sim.dc(Vinput=slice(10, 10, 0))
         cur = dcv['input']
         return cur
+    """
+
 
 
 app = flask.Flask(__name__)
