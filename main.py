@@ -127,11 +127,9 @@ class Block:
     def default(prng: random.Random, complexity: float, orient: BlockOr = BlockOr.V):
         new = Block(orient, complexity)
         new.populate(prng)
-        if len(new.children) > 0:
-            new.children[0] = Block(orient.other(), complexity)
         new.freeDown = True
         new.freeUp = True
-        new.freeLeft = False
+        new.freeLeft = True
         new.freeRight = True
         new.placeResistors(prng)
         new.startV = 1.0
@@ -197,7 +195,7 @@ def check(id: str):
 @app.route('/block', methods=['POST'])
 def create() -> flask.Response:
     prng = random.Random()
-    id = str(base64.b32encode(prng.randbytes(32)))
+    id = (base64.b32encode(prng.randbytes(8))).decode('utf-8')
     db[id] = Block.default(prng, flask.request.args.get('complexity', default=0.5, type=float))
     db[id].solve()
     return answer({'error': None, 'id': id}, 200)
