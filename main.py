@@ -61,10 +61,10 @@ class Block:
         self.freeUp = False
         self.freeDown = False
 
-        self.leftR = -1.0
-        self.rightR = -1.0
-        self.upR = -1.0
-        self.downR = -1.0
+        self.leftR = 0.0
+        self.rightR = 0.0
+        self.upR = 0.0
+        self.downR = 0.0
 
         self.startV = 0.0
 
