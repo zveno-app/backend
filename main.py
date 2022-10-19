@@ -209,3 +209,8 @@ def get(id: str):
         return answer(jsons.dump(db[id], strip_privates=True), 200)
     else:
         return answer({"error": "Not found"}, 404)
+
+
+if __name__ == '__main__':
+    from os import getenv
+    app.run(host=getenv('HOST', '127.0.0.1'), port=int(getenv('PORT', '8080')))
