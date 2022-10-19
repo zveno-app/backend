@@ -197,7 +197,7 @@ def check(id: str):
 @app.route('/block', methods=['POST'])
 def create() -> flask.Response:
     prng = random.Random()
-    id = str(base64.b32encode(prng.randbytes(32)))
+    id = (base64.b32encode(prng.randbytes(8))).decode('utf-8')
     db[id] = Block.default(prng, flask.request.args.get('complexity', default=0.5, type=float))
     db[id].solve()
     return answer({'error': None, 'id': id}, 200)
