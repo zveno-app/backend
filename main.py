@@ -160,10 +160,9 @@ class Block:
             else:
                 self.children[i].to_circuit(off_x + cw * i, off_y, cw, s_y)
     def solve(self):
-        self._cs.nodes[(0, 0)] = 'inp'
-        self._cs.nodes[(0, self._WS)] = self._cs.cir.gnd
+        self._cs.nodes[(0, self._WS)] = 'inp'
+        self._cs.nodes[(self._WS, 0)] = self._cs.cir.gnd
         self._cs.cir.V('input', 'inp', self._cs.cir.gnd, 1.0)
-        self.children[0].startV = 1.0
         self.to_circuit(0, 0, self._WS, self._WS)
         print(self._cs.cir)
         sim = self._cs.cir.simulator(temperature=25, nominal_temperature=25)
