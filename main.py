@@ -1,4 +1,5 @@
 from enum import Enum
+import base64
 from dataclasses import dataclass
 import typing
 import random
@@ -193,14 +194,13 @@ def check(id: str):
         ent.solve()
     return answer({'error': None, 'result': abs(ent._answer - user_ans) < EPS}, 200)
 
-@app.route('/block/<id>', methods=['POST'])
-def create(id: str) -> flask.Response:
-    if id in db.keys():
-        return answer({"error": "Circuit already present"}, 409)
+@app.route('/block', methods=['POST'])
+def create() -> flask.Response:
     prng = random.Random()
+    id = str(base64.b32encode(prng.randbytes(32)))
     db[id] = Block.default(prng, flask.request.args.get('complexity', default=0.5, type=float))
     db[id].solve()
-    return answer({'error': None}, 200)
+    return answer({'error': None, 'id': id}, 200)
 
 @app.route('/block/<id>', methods=['GET'])
 def get(id: str):
