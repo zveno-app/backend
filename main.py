@@ -3,8 +3,13 @@ import base64
 from dataclasses import dataclass
 import typing
 import random
+
+import PySpice.Spice.Simulation as simulation
+simulation.CircuitSimulator.DEFAULT_SIMULATOR = 'ngspice-subprocess'
+
 from PySpice.Spice.Simulation import as_A
 import PySpice.Logging.Logging as Logging
+
 logger = Logging.setup_logging(logging_level='DEBUG')
 
 import flask
