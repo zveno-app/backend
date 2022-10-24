@@ -3,6 +3,9 @@ import base64
 from dataclasses import dataclass
 import typing
 import random
+from PySpice.Spice.Simulation import as_A
+import PySpice.Logging.Logging as Logging
+logger = Logging.setup_logging(logging_level='DEBUG')
 
 import flask
 import jsons
@@ -10,7 +13,7 @@ import jsons
 import PySpice.Probe.WaveForm
 from PySpice.Spice.Netlist import Circuit
 
-EPS = 1e-6
+EPS = 1e-2
 
 class BlockOr(Enum):
     V = 'v'
@@ -162,12 +165,15 @@ class Block:
         self._cs.nodes[(0, self._WS)] = 'inp'
         self._cs.nodes[(self._WS, 0)] = self._cs.cir.gnd
         self._cs.cir.V('input', 'inp', self._cs.cir.gnd, 1.0)
-        self.to_circuit(0, 0, self._WS, self._WS)
-        print(self._cs.cir)
-        sim = self._cs.cir.simulator(temperature=25, nominal_temperature=25)
+        self.to_circuit(0, 0, 1 << 63, 1 << 63)
+        sim = self._cs.cir.simulator(temperature=25, nominal_temperature=25) 
         op = typing.cast(PySpice.Probe.WaveForm.OperatingPoint, sim.operating_point())
-        self._answer = 1 / abs(op['Vinput'][0])
-        print(self._answer)
+        amp = abs(op['Vinput'][0])
+        if amp > as_A(500.0 - EPS):
+            print(f"{amp} -> 0")
+            return 0
+        self._answer = 1 / amp
+        print(f"{amp} -> {self._answer}")
         return self._answer 
 
 app = flask.Flask(__name__)
@@ -178,6 +184,9 @@ def answer(dct, status: int):
     result = flask.jsonify(dct)
     result.status = status
     return result
+
+def generate_name(prng):
+    return (base64.b32encode(prng.randbytes(8)).strip(b'=')).decode('utf-8')
 
 @app.route('/block/<id>/check', methods=['GET'])
 def check(id: str):
@@ -195,7 +204,7 @@ def check(id: str):
 @app.route('/block', methods=['POST'])
 def create() -> flask.Response:
     prng = random.Random()
-    id = (base64.b32encode(prng.randbytes(8))).decode('utf-8')
+    id = generate_name(prng)
     db[id] = Block.default(prng, flask.request.args.get('complexity', default=0.5, type=float))
     db[id].solve()
     return answer({'error': None, 'id': id}, 200)
