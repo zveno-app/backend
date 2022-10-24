@@ -188,6 +188,7 @@ db: dict[str, Block] = {}
 def answer(dct, status: int):
     result = flask.jsonify(dct)
     result.status = status
+    result.headers.add('Access-Control-Allow-Origin', '*')
     return result
 
 def generate_name(prng):
