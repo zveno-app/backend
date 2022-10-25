@@ -176,6 +176,7 @@ class Block:
         amp = abs(op['Vinput'][0])
         if amp > as_A(500.0 - EPS):
             print(f"{amp} -> 0")
+            self._answer = 0.0
             return 0
         self._answer = 1 / amp
         print(f"{amp} -> {self._answer}")
