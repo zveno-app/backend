@@ -50,7 +50,7 @@ class CircuitState:
             self.cir.R(f"r_{self.new_name()}", self.nodes[u], self.nodes[v], r)
 
 class Block:
-    _WS = 10000000
+    _WS = 1 << 63
     _WIRE = 100000
     _NEXT_DIV_P = 0.7
     _MAX_CHILDREN = 4
@@ -170,7 +170,7 @@ class Block:
         self._cs.nodes[(0, self._WS)] = 'inp'
         self._cs.nodes[(self._WS, 0)] = self._cs.cir.gnd
         self._cs.cir.V('input', 'inp', self._cs.cir.gnd, 1.0)
-        self.to_circuit(0, 0, 1 << 63, 1 << 63)
+        self.to_circuit(0, 0, self._WS, self._WS)
         sim = self._cs.cir.simulator(temperature=25, nominal_temperature=25) 
         op = typing.cast(PySpice.Probe.WaveForm.OperatingPoint, sim.operating_point())
         amp = abs(op['Vinput'][0])
