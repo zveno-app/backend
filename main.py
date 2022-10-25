@@ -1,11 +1,11 @@
+from datetime import datetime
 from enum import Enum
+from os import getenv
 import base64
 from dataclasses import dataclass
 import typing
 import random
-
-import PySpice.Spice.Simulation as simulation
-simulation.CircuitSimulator.DEFAULT_SIMULATOR = 'ngspice-subprocess'
+import sqlite3
 
 from PySpice.Spice.Simulation import as_A
 import PySpice.Logging.Logging as Logging
@@ -171,7 +171,7 @@ class Block:
         self._cs.nodes[(self._WS, 0)] = self._cs.cir.gnd
         self._cs.cir.V('input', 'inp', self._cs.cir.gnd, 1.0)
         self.to_circuit(0, 0, self._WS, self._WS)
-        sim = self._cs.cir.simulator(temperature=25, nominal_temperature=25) 
+        sim = self._cs.cir.simulator(temperature=25, nominal_temperature=25, simulator='ngspice-subprocess') 
         op = typing.cast(PySpice.Probe.WaveForm.OperatingPoint, sim.operating_point())
         amp = abs(op['Vinput'][0])
         if amp > as_A(500.0 - EPS):
@@ -183,10 +183,25 @@ class Block:
 
 app = flask.Flask(__name__)
 
-db: dict[str, Block] = {}
+conn = sqlite3.connect(getenv('DB_PATH', '/tmp/zveno_db'))
+
+def init_db():
+    c = conn.cursor()
+    c.execute("""
+        create table if not exists circuits (
+            id text primary key,
+            json text,
+            ans real,
+            created text
+        )
+    """)
+    conn.commit()
 
 def answer(dct, status: int):
-    result = flask.jsonify(dct)
+    if not isinstance(dct, str):
+        result = flask.jsonify(dct)
+    else:
+        result = flask.make_response(dct)
     result.status = status
     result.headers.add('Access-Control-Allow-Origin', '*')
     return result
@@ -199,30 +214,34 @@ def check(id: str):
     user_ans = flask.request.args.get('answer', default=None, type=float)
     if user_ans is None:
         return answer({'error': 'Answer not provided'}, 400)
-    if id not in db.keys():
+    c = conn.cursor()
+    c.execute("select * from circuits where id = ?", (id,))
+    ent = c.fetchone()
+    if ent is None:
         return answer({'error': 'Circuit not found'}, 404)
-    ent = db[id]
-    if ent._answer is None:
-        ent._answer = 0.0
-        ent.solve()
-    return answer({'error': None, 'result': abs(ent._answer - user_ans) < EPS}, 200)
+    return answer({'error': None, 'result': abs(ent[2] - user_ans) < EPS}, 200)
 
 @app.route('/block', methods=['POST'])
 def create() -> flask.Response:
     prng = random.Random()
     id = generate_name(prng)
-    db[id] = Block.default(prng, flask.request.args.get('complexity', default=0.5, type=float))
-    db[id].solve()
+    newb = Block.default(prng, flask.request.args.get('complexity', default=0.5, type=float))
+    newb.solve()
+    c = conn.cursor()
+    c.execute("insert into circuits values (?, ?, ?, ?)", (id, jsons.dumps(newb, strip_privates=True), newb._answer, datetime.now().isoformat()))
+    conn.commit()
     return answer({'error': None, 'id': id}, 200)
 
 @app.route('/block/<id>', methods=['GET'])
 def get(id: str):
-    if id in db.keys():
-        return answer(jsons.dump(db[id], strip_privates=True), 200)
-    else:
-        return answer({"error": "Not found"}, 404)
+    c = conn.cursor()
+    c.execute("select * from circuits where id = ?", (id,))
+    ent = c.fetchone()
+    if ent is None:
+        return answer({'error': 'Circuit not found'}, 404)
+    return answer(ent[1], 200)
 
+init_db()
 
 if __name__ == '__main__':
-    from os import getenv
     app.run(host=getenv('HOST', '127.0.0.1'), port=int(getenv('PORT', '8080')))
